@@ -1,5 +1,6 @@
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.expressions.Window
 import org.apache.log4j.{Level, Logger}
 
 object Main {
@@ -14,9 +15,9 @@ object Main {
       .master("local[*]")
       .appName("ECB_task")
       .getOrCreate()
-
-    //println("Spark version: "+spark.version)
-
+//
+//    //println("Spark version: "+spark.version)
+//
     //import CSV file to a DataFrame
     val df = spark.read.option("delimiter", ",")
       .option("header", "true").csv("src/resources/transaction_test_data.csv")
@@ -60,7 +61,7 @@ object Main {
 
 
     // create mini DataFrame to apply join
-    val columns = Seq("UserID","Bank")
+
     val data = Seq(("U52","SEB"),("U72","SwedBank"),("U75","Luminor"))
     val rdd = spark.sparkContext.parallelize(data)
     val second_df = spark.createDataFrame(rdd).toDF("UserID","Bank")
@@ -110,6 +111,55 @@ object Main {
 
     val norm_df = df.withColumn("NormalizedTransAmount", round((df("TransactionAmount")-df_mean)/df_standard,4))
     norm_df.show()
+
+    //Dealing with Duplicates
+
+    //For a simple DataFrame with no unique ID for each record (not our case)
+
+    // First we can see if any duplicates exist by using distinct and count
+    // original DataFrame has:
+    println("df record count is " + df.count())
+    //after applying distinct
+    val cleaned_df = df.distinct()
+    println("clean df record count is " + cleaned_df.count())
+
+    //If DataFrame has duplicates the cleaned DataFrame record quantity will be smaller
+    //We can remove the duplicates by using the dropDuplicates() method
+    println("df record count before dropping duplicates is " + df.count())
+    val noDup_df = df.dropDuplicates()
+    println("df record after dropping duplicates count is " + noDup_df.count())
+
+    //For our case
+
+    // Since the TransactionID is always unique, the only values that can duplicate
+    // are UserID, TransactionAmount and Timestamp
+    // Here we have to look at the combination of all 3 col together
+    // Since User + Amount = can have different timestamp, not duplicate
+    // User + Timestamp = theoretically can transfer different amount at the same time, not duplicate
+    // and Amount + Timestamp = can have different user, not duplicate
+
+    //First we need to separate the Dataframe from TransactionID using window
+    val windowSpec = Window.partitionBy("UserID", "TransactionAmount", "Timestamp")
+
+    // We count the rows of the window where 3 selected columns are same
+    // After it we filter the rows, so it shows us only duplicates, because it counted more than one similar rows
+    // Lastly we remove the "count" column
+    // This allows us to see what are the duplicates
+    val duplicates_df = df
+      .withColumn("count", count("*").over(windowSpec))
+      .filter(col("count") > 1)
+      .drop("count")
+
+    duplicates_df.show()
+
+    // Now we see the duplicate ID's and notice the pattern
+    // We can now remove them with filtering and reassigning original Dataframe if necessary
+    val filtered_df = df.filter(!df("TransactionID").startsWith("DUP"))
+    filtered_df.show()
+
+
+
+
 
 
   }
