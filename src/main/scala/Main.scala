@@ -158,7 +158,81 @@ object Main {
     filtered_df.show()
 
 
+    //Optimization
 
+    //API selection
+    //It is best to use Dataframe < DataSet < RDD
+
+    //Broadcasting
+    /* When planning on combining two Dataframes, where one is small and the others is big
+       It is best to use broadcast join
+       So in my previous join task, it would be better to use broadcast for my custom mini dataframe
+     */
+
+    // create mini DataFrame to apply join
+
+//    val data = Seq(("U52","SEB"),("U72","SwedBank"),("U75","Luminor"))
+//    val rdd = spark.sparkContext.parallelize(data)
+//    val second_df = spark.createDataFrame(rdd).toDF("UserID","Bank")
+//
+//    second_df.show()
+
+    //join original DataFrame with mini DataFrame, but now using broadcast join!
+    val broadcasted_df = df.join(broadcast(second_df), Seq("UserID"))
+    broadcasted_df.show(20)
+
+    //Caching
+    /* We use cache() on a Dataframe, when we plan on working with it multiple times.
+       Like apply groupBy, agg, filter etc.
+       Since each of these might trigger re-computation of data
+     */
+
+    //Experiment zone
+
+    val start_noCache = System.nanoTime()
+
+    val transformed_df = df.groupBy("UserID")
+
+    val end_noCache = System.nanoTime()
+
+    val res_noCache = (end_noCache-start_noCache)/1e9
+    println("Elapsed time for not cached Dataframe: " + res_noCache)
+
+    val start_Cache = System.nanoTime()
+
+    val cached_df = df.cache()
+
+    val transform_cache = cached_df.groupBy("UserID").count()
+
+    val end_Cache = System.nanoTime()
+
+    val res_Cache = (end_Cache - start_Cache) / 1e9
+    println("Elapsed time for cached Dataframe: " + res_Cache)
+
+    //The results show, that the cached Dataframe needs more time, than the not cached Dataframe :/
+
+    //Use reduceByKey not groupByKey
+    /* The main problem with groupByKey is, that it's shuffling the data
+       reduceByKey is first applying all the necessary transformations< this way
+       reducing the amount of final shuffling
+     */
+
+    //File format
+    //Although spark supports many formats, the most optimized format is parquet
+
+    //Partitioning
+    /* Partitioning is base in Data Engineering. It allows us to split big data into smaller
+       chunks and then use separately. This way we can perform more transformations in parallel
+       It's more usable when you have multiple disks or pc
+     */
+
+    //Coalescing and Repartitioning
+    /* Coalescing in Spark reduces the amount of partitions
+       And Repartitioning just changes the amount of partitions that was made
+       Like if i need 5 partitions not 2 or 8, i can repartition them
+       But repartitioning uses shuffling, so if we want to reduce partition amoun from 5 to 2
+       It's best to use coalesce()
+     */
 
 
 
